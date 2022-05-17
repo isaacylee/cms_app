@@ -1,0 +1,15 @@
+<form method="post" action="/users/create_account">
+  <div>
+    <label for="username">Username:</label>
+    <input type="text" id="username" name="username" class="inline" value="<%= params[:username]%>"/>
+  </div>
+  <div>
+    <label for="password">Password:</label>
+    <input type="password" id="password" name="password" class="inline" />
+  </div>
+  <div>
+    <label for="code">Registration code:</label>
+    <input type="text" id="code" name="code" class="inline" />
+  </div>
+  <button type="submit">Create Account</button>
+</form>

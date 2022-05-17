@@ -74,19 +74,67 @@ get "/users/signin" do
   erb :signin, layout: :layout
 end
 
-def load_user_credentials
-  credentials_path = if ENV["RACK_ENV"] == "test"
+# Go to create account form
+get "/users/create_account" do
+  erb :account, layout: :layout
+end
+
+def credentials_path
+  if ENV["RACK_ENV"] == "test"
     File.expand_path("../test/users.yml", __FILE__)
   else
     File.expand_path("../users.yml", __FILE__)
   end
+end
 
+def load_user_credentials
   YAML.load_file(credentials_path)
 end
 
 def valid_credentials?(username, password)
   credentials = load_user_credentials
-  credentials[username] == password
+
+  if credentials.key?(username)
+    bcrypt_password = BCrypt::Password.new(credentials[username])
+    bcrypt_password == password
+  else
+    false
+  end
+end
+
+def registration_error_message(username, password, code)
+  credentials = load_user_credentials
+
+  if [username, password, code].any? { |field| field.empty? }
+    "Please complete the form"
+  elsif credentials.key?(username)
+    "Username is already taken"
+  elsif code != "inside"
+    "Invalid registration code"
+  else
+    false
+  end
+end
+
+# Create an account
+post "/users/create_account" do
+  username = params[:username]
+  password = params[:password]
+  code = params[:code]
+
+  error_message = registration_error_message(username, password, code)
+
+  if error_message
+    session[:message] = error_message
+    erb :account, layout: :layout
+  else
+    credentials = load_user_credentials
+    bcrypt_password = BCrypt::Password.create password
+    credentials[username] = bcrypt_password.to_s
+    File.open(credentials_path, 'w') { |file| file.write(credentials.to_yaml) }
+    session[:message] = "Account has been created"
+    redirect "/users/signin"
+  end
 end
 
 # Sign in into account
@@ -123,9 +171,12 @@ end
 get "/:filename" do
   file_path = File.join(data_path, params[:filename])
 
-  redirect_not_found(file_path)
-  
-  load_file_contents(file_path)
+  if File.exist?(file_path)
+    load_file_contents(file_path)
+  else
+    session[:message] = "'#{params[:filename]}' does not exist"
+    redirect "/"
+  end
 end
 
 # Edit a file's contents
@@ -195,5 +246,28 @@ post "/:filename/delete" do
   File.delete(file_path)
 
   session[:message]= "'#{params[:filename]}' was deleted"
+  redirect "/"
+end
+
+def rename_duplicate(filename)
+  basepath, extension = filename.split(".")
+  basepath + "_copy." + extension
+end
+
+# Duplicate a document
+post "/:filename/duplicate" do
+  require_signed_in_user
+
+  files = get_file_names
+  filename = params[:filename]
+
+  dup_filename = rename_duplicate(filename)
+  
+  file_path = File.join(data_path, filename)
+  dup_file_path = File.join(data_path, dup_filename)
+
+  File.write(dup_file_path, File.read(file_path))
+  
+  session[:message]= "'#{params[:filename]}' was duplicated"
   redirect "/"
 end
